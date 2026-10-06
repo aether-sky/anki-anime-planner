@@ -15,7 +15,7 @@ def _headers():
     key = load_config().get("jimaku_api_key") or ""
     if not key:
         sys.exit("jimaku needs an API key: log in at https://jimaku.cc, open your account page, create a key, "
-                 "and set \"jimaku_api_key\" in ~/.anime-planner/config.json")
+                 "and set \"jimaku_api_key\" in ~/.anki-anime-planner/config.json")
     return {"Authorization": key}
 
 
