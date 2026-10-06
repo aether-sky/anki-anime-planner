@@ -52,7 +52,7 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
   tool. People suspend both what they already know (low z) and what is too hard (high z), so the
   window is two cuts on z: suspension probability is high below the low cut, low between, and
   rises again above the high cut. `score.py` fits both by likelihood on the user's cards.
-- Only triaged episodes count: an episode whose cards are under 20 % suspended has not been gone
+- Only evaluated episodes count: an episode whose cards are under 20 % suspended has not been gone
   through yet, and its kept cards mean nothing. Episode comes from the `S01E01`-style tag.
 - If suspensions never rise again within the user's data, the high cut is reported as not found
   and nothing is marked too hard. Say that plainly; it means they should mine something harder.
