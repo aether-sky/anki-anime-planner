@@ -1,0 +1,6 @@
+fugashi>=1.3
+unidic-lite>=1.0.8
+genanki>=0.13
+pysubs2>=1.6
+anitopy>=2.1
+numpy>=1.24
