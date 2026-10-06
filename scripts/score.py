@@ -5,7 +5,7 @@ get a difficulty score z from weighted features (vocabulary rarity, clause struc
 register, speed). The learner's window is two cuts on that scale, fitted from which of
 their cards they suspended: below the low cut they suspend as already known, above the
 high cut they suspend as too hard, in between they keep. Only episodes the learner has
-actually triaged (enough suspensions) are used. When nothing they triaged was hard
+actually evaluated (enough suspensions) are used. When nothing they evaluated was hard
 enough for suspensions to rise again, the high cut is reported as not found rather
 than guessed. Writes cache/scores.json.
 """
@@ -18,8 +18,8 @@ TOKENS = os.path.join(CACHE, "tokens")
 os.makedirs(TOKENS, exist_ok=True)
 
 TRIVIAL_CHARS = 10
-TRIAGED_MIN_RATE = 0.2         # an episode counts as triaged once this share of its cards is suspended
-MIN_TRIAGED_CARDS = 60
+EVALUATED_MIN_RATE = 0.2         # an episode counts as evaluated once this share of its cards is suspended
+MIN_EVALUATED_CARDS = 60
 JA = re.compile(r"[ぁ-ゖァ-ヺー一-鿿々〆ヵヶ]")
 CONTENT_POS = {"名詞", "動詞", "形容詞", "副詞", "形状詞", "代名詞", "連体詞", "接続詞"}
 SKIP_POS2 = {"数詞", "固有名詞"}
@@ -161,9 +161,9 @@ def main():
     z_all = ((X_all - mu) / sd) @ WEIGHTS
     model = {"features": FEATURES, "weights": WEIGHTS.tolist(), "mu": mu.tolist(), "sd": sd.tolist()}
 
-    # the learner's window from triaged episodes
+    # the learner's window from evaluated episodes
     cut_low = cut_high = None
-    triaged_cards = 0
+    evaluated_cards = 0
     if anki:
         # Decks from this skill carry show and S01E01 tags; decks from other tools usually have
         # neither, so the deck name stands in: "Show::Episode" splits, anything else is one show.
@@ -187,8 +187,8 @@ def main():
         zs, ys = [], []
         for (show, ep), cards in by_episode.items():
             rate = sum(c["suspended"] for c in cards) / len(cards)
-            if rate < TRIAGED_MIN_RATE:
-                log(f"  {show} {ep}: {len(cards)} cards, {rate:.0%} suspended, not triaged yet"); continue
+            if rate < EVALUATED_MIN_RATE:
+                log(f"  {show} {ep}: {len(cards)} cards, {rate:.0%} suspended, not evaluated yet"); continue
             for c in cards:
                 text = clean(c["text"])
                 if len(JA.findall(text)) < TRIVIAL_CHARS:
@@ -198,23 +198,23 @@ def main():
                     f[FEATURES.index(name)] = mu[FEATURES.index(name)]
                 zs.append(float(((f - mu) / sd) @ WEIGHTS)); ys.append(c["suspended"])
             log(f"  {show} {ep}: {len(cards)} cards, {rate:.0%} suspended, used")
-        triaged_cards = len(zs)
-        if triaged_cards >= MIN_TRIAGED_CARDS and 0 < sum(ys) < len(ys):
+        evaluated_cards = len(zs)
+        if evaluated_cards >= MIN_EVALUATED_CARDS and 0 < sum(ys) < len(ys):
             cut_low, cut_high = fit_cuts(zs, ys)
             zs = np.array(zs)
-            log(f"window from {triaged_cards} triaged long cards: known below z={cut_low:+.2f} "
+            log(f"window from {evaluated_cards} evaluated long cards: known below z={cut_low:+.2f} "
                 f"({(zs < cut_low).mean():.0%} of them), too hard above "
                 + (f"z={cut_high:+.2f} ({(zs > cut_high).mean():.0%} of them)" if cut_high is not None
-                   else "not found: nothing triaged was hard enough"))
-        elif triaged_cards >= MIN_TRIAGED_CARDS:
-            log("every triaged card is on one side (all suspended or none); the window cannot be placed")
+                   else "not found: nothing evaluated was hard enough"))
+        elif evaluated_cards >= MIN_EVALUATED_CARDS:
+            log("every evaluated card is on one side (all suspended or none); the window cannot be placed")
         else:
-            log(f"only {triaged_cards} triaged long cards; need {MIN_TRIAGED_CARDS}")
+            log(f"only {evaluated_cards} evaluated long cards; need {MIN_EVALUATED_CARDS}")
     if cut_low is None:
         cut_low = float(np.quantile(z_all, 0.3)); cut_high = float(np.quantile(z_all, 0.8))
-        model.update({"provisional": True, "fitted_on": triaged_cards})
+        model.update({"provisional": True, "fitted_on": evaluated_cards})
     else:
-        model.update({"provisional": False, "fitted_on": triaged_cards})
+        model.update({"provisional": False, "fitted_on": evaluated_cards})
     model.update({"cut_low": cut_low, "cut_high": cut_high})
 
     # per show summary
@@ -235,7 +235,7 @@ def main():
                     "hard_share": round(hard, 3) if hard is not None else None,
                     "mean_z": round(float(zs.mean()), 3) if len(zs) else None, "hist": hist.tolist()}
     save_json(os.path.join(CACHE, "scores.json"), {"model": model, "shows": out})
-    print(f"scored {len(out)} shows; window {'fitted on %d triaged cards' % triaged_cards if not model['provisional'] else 'PROVISIONAL'}"
+    print(f"scored {len(out)} shows; window {'fitted on %d evaluated cards' % evaluated_cards if not model['provisional'] else 'PROVISIONAL'}"
           + ("; high cut not found yet" if cut_high is None else ""))
 
 
