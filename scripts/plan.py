@@ -92,8 +92,9 @@ th{{color:#52514e;font-weight:500}} .bar{{display:flex;width:180px;height:10px;b
 .legend i{{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin:0 4px 0 12px}}
 </style><h1>Anime plan for {html.escape(user)}</h1>{note}
 <p class="muted">Within each tier, shows are ordered by rating: your own MAL score in bold, otherwise the MAL average. Ties by how many lines sit in your range.
-"Vocab you have" is the share of a show's words (by occurrence) that appear on one of your Anki cards, so it only counts
-what your cards have seen ({model.get('vocabulary', 0)} distinct words so far) and grows as you mine more.</p>
+"Vocab you know" is the share of a show's words (by occurrence) that you know: words on cards you suspended because they were
+easy, or on cards you have learned (kept, interval of three weeks or more). That is {model.get('vocabulary', 0)} distinct words so far,
+from {model.get('easy_cards', 0)} easy and {model.get('learned_cards', 0)} learned cards; it grows as you study.</p>
 <p class="legend muted">Share of lines: <i style="background:{COLORS['trivial']}"></i>trivial (under 10 characters)
 <i style="background:{COLORS['easy']}"></i>below your floor <i style="background:{COLORS['mid']}"></i>in your range <i style="background:{COLORS['hard']}"></i>above your ceiling (too hard).
 Bottom shelf = over {FLOOR_MAX:.0%} below the floor; parked = over {HARD_MAX:.0%} above the ceiling.</p>"""]
@@ -102,7 +103,7 @@ Bottom shelf = over {FLOOR_MAX:.0%} below the floor; parked = over {HARD_MAX:.0%
         parts.append(f"<h2>{title} <span class=muted>({len(rs)})</span></h2><p class=desc>{desc}</p>")
         if not rs:
             continue
-        parts.append("<table><tr><th>Show</th><th>Rating</th><th>Lines</th><th>Vocab you have</th><th>Below floor</th><th>In range</th><th>Hard</th><th></th><th>MAL</th><th>Where</th></tr>")
+        parts.append("<table><tr><th>Show</th><th>Rating</th><th>Lines</th><th>Vocab you know</th><th>Below floor</th><th>In range</th><th>Hard</th><th></th><th>MAL</th><th>Where</th></tr>")
         for r in rs:
             where = ("in your library: " + html.escape(r["dirs"][0])) if r["on_disk"] else (f'<a href="https://jimaku.cc/entry/{r["jimaku_id"]}">jimaku</a>' if r["jimaku_id"] else "")
             coverage = "" if r["coverage"] is None else f"{r['coverage']:.0%}"
