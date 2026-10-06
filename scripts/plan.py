@@ -1,9 +1,11 @@
 """Sort scored shows into tiers and write plan.json and report.html in the data folder.
 
-Each show's non-trivial lines split into easy (below the learner's known cut), in range,
-and hard (above the too-hard cut). A show is too easy when most lines are known, too hard
-when too many are above the high cut, in range otherwise. While the high cut has not been
-found, nothing counts as too hard. Within a tier, higher rated shows come first.
+Each show's non-trivial lines split into easy (below the learner's floor, the point where
+they stop suspending lines as already known), in range, and hard (above their ceiling,
+where they start suspending lines as too hard). A show is too easy when most lines are
+below the floor, too hard when too many are above the ceiling, in range otherwise. While
+no ceiling has been found, nothing counts as too hard. Within a tier, higher rated shows
+come first.
 """
 import html, os
 from common import DATA, CACHE, load_config, load_json, save_json
@@ -16,7 +18,7 @@ TIERS = [
     ("tier2", "Tier 2: go get it", "In your range, on your MAL, not on disk."),
     ("rewatch", "Rewatch: comprehensible input", "Completed shows that land in or just above your range. Known plot makes harder lines cheaper."),
     ("tier3", "Tier 3: parked", "Too hard for now. Sorted by how close they are; they move up as your window moves."),
-    ("easy", "Bottom shelf: mostly known", "Most lines are below your known cut. Watch freely, little to mine."),
+    ("easy", "Bottom shelf: mostly known", "Most lines are below your floor. Watch freely, little to mine."),
 ]
 COLORS = {"trivial": "#cde2fb", "easy": "#86b6ef", "mid": "#2a78d6", "hard": "#104281"}
 
@@ -69,13 +71,15 @@ def main():
 
     unscored = [s for s in shows if s["key"] not in scored["shows"] and s["status"] != "dropped"]
     if model["provisional"]:
-        note = ("<p class=warn>Provisional: not enough triaged Anki cards yet, so the cuts are corpus quantiles, not yours. "
-                "Suspend what you know in an episode or two and re-run.</p>")
+        note = ("<p class=warn>Provisional: not enough triaged Anki cards yet, so your floor and ceiling are guesses from the "
+                "corpus, not from you. Suspend what you already know in an episode or two and re-run.</p>")
     else:
-        note = (f"<p>Known cut fitted on {model['fitted_on']} of your triaged cards. "
-                + ("The too-hard cut has <b>not been found yet</b>: nothing you have triaged was hard enough for you to start suspending "
-                   "again, so no show is marked too hard. Mine something harder and it will appear.</p>" if model["cut_high"] is None
-                   else "Both cuts fitted from your suspensions.</p>"))
+        note = (f"<p>Your range comes from {model['fitted_on']} cards you have triaged. The <b>floor</b> is where you stop suspending "
+                "lines as already known. "
+                + ("The <b>ceiling</b>, where you start suspending lines as too hard, has <b>not been found yet</b>: nothing you have "
+                   "triaged was hard enough, so no show is marked too hard. Mine something harder and it will appear.</p>"
+                   if model["cut_high"] is None else
+                   "The <b>ceiling</b> is where you start suspending lines as too hard.</p>"))
     user = load_json(os.path.join(CACHE, "mal.json"))["user"]
     parts = [f"""<!doctype html><meta charset="utf-8"><title>Anime plan</title><style>
 body{{font-family:system-ui,sans-serif;max-width:1000px;margin:32px auto;padding:0 16px;color:#0b0b0b;background:#fcfcfb}}
@@ -87,8 +91,8 @@ th{{color:#52514e;font-weight:500}} .bar{{display:flex;width:180px;height:10px;b
 </style><h1>Anime plan for {html.escape(user)}</h1>{note}
 <p class="muted">Within each tier, shows are ordered by rating: your own MAL score in bold, otherwise the MAL average. Ties by how many lines sit in your range.</p>
 <p class="legend muted">Share of lines: <i style="background:{COLORS['trivial']}"></i>trivial (under 10 characters)
-<i style="background:{COLORS['easy']}"></i>known <i style="background:{COLORS['mid']}"></i>in range <i style="background:{COLORS['hard']}"></i>too hard.
-Too easy = over {EASY_MAX_KNOWN:.0%} known; too hard = over {HARD_MAX:.0%} above the high cut.</p>"""]
+<i style="background:{COLORS['easy']}"></i>below your floor (already known) <i style="background:{COLORS['mid']}"></i>in your range <i style="background:{COLORS['hard']}"></i>above your ceiling (too hard).
+Bottom shelf = over {EASY_MAX_KNOWN:.0%} below the floor; parked = over {HARD_MAX:.0%} above the ceiling.</p>"""]
     for key, title, desc in TIERS:
         rs = plan["tiers"][key]
         parts.append(f"<h2>{title} <span class=muted>({len(rs)})</span></h2><p class=desc>{desc}</p>")
