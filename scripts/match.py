@@ -57,7 +57,7 @@ def best_match(show, index, title_key, cutoff):
     ties break on the entry's own id."""
     want_season = show["season"] or 1
     names = {norm_title(show["title"]), norm_title(re.sub(r"\(.*?\)", " ", show["title"]))}   # with and without "(English title)"
-    candidates = []
+    candidates = {}                                   # entry id -> (score, sim, entry); an entry reachable by two names keeps its best
     keys = list(index)
     for n in names:
         close = set(difflib.get_close_matches(n, keys, n=8, cutoff=0.6))
@@ -69,11 +69,15 @@ def best_match(show, index, title_key, cutoff):
                 sim = max(sim, 0.9)                   # "code geass" vs "code geass hangyaku no lelouch"
             for e in index[key]:
                 season_ok = season_of(e[title_key]) == want_season
-                candidates.append((sim + (0.15 if season_ok else -0.3), sim, str(e.get("mal_id") or e.get("id")), e))
+                eid = str(e.get("mal_id") or e.get("id"))
+                score = (sim + (0.15 if season_ok else -0.3), sim)
+                if eid not in candidates or score > candidates[eid][:2]:
+                    candidates[eid] = (*score, e)
     if not candidates:
         return None, None
-    best = max(candidates)
-    return (best[3], f"fuzzy {best[1]:.2f}") if best[1] >= cutoff else (None, None)
+    eid = max(candidates, key=lambda k: (candidates[k][0], candidates[k][1], k))
+    score, sim, e = candidates[eid]
+    return (e, f"fuzzy {sim:.2f}") if sim >= cutoff else (None, None)
 
 
 def main():
