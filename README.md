@@ -5,6 +5,8 @@ well their Japanese fits your current level, then builds subs2srs-style Anki dec
 ones worth mining. Your level is read from your existing Anki sentence cards: what you
 suspend as already known, and what you suspend as too hard. No flags, no tagging ritual.
 
+![The plan report: tier 1 shows with their rating, line counts, and a bar of known, in-range and too-hard lines](docs/report.png)
+
 ## Install
 
 1. Copy this folder to `~/.claude/skills/anki-anime-planner` (Claude Code picks it up next session).
