@@ -1,6 +1,6 @@
 ---
 name: anki-anime-planner
-description: Rank the user's anime (MAL list + what is on disk) by how well each show's Japanese fits their current level, estimated from which Anki sentence cards they suspend, and produce a tiered learning plan with decks to mine next.
+description: Rank the user's anime (MAL list + what is in their library on disk) by how well each show's Japanese fits their current level, estimated from which Anki sentence cards they suspend, and produce a tiered learning plan with decks to mine next.
 ---
 
 # Anime planner
@@ -65,14 +65,14 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
 
 easy = over 85 % of lines known (this learner suspends about two thirds of any episode as known,
 so a lower bar emptied every tier) · tier3 = over 40 % too hard · tier1 = otherwise in range and
-on disk · tier2 = in range, on MAL, not on disk · rewatch = completed and in or just above range.
+in their library · tier2 = in range, on MAL, not in their library · rewatch = completed and in or just above range.
 Within a tier, the user's own MAL score orders first, then the MAL average, then the share of
 lines in range. The thresholds are the constants at the top of plan.py.
 
 ## What you do with the result
 
 - Open `report.html` for the user or summarise the top of tier 1 and 2 in chat.
-- When they pick a show on disk, build the deck with `scripts/build_deck.py` (the subs2srs
+- When they pick a show from their library, build the deck with `scripts/build_deck.py` (the subs2srs
   builder; see its docstring; Japanese subs come from the show's `cache/subs/<key>/` folder or a
   better BD-timed file from jimaku, English from the MKV's own track). jimaku files named
   "with furigana" need `scripts/flatten_furigana.py` first.

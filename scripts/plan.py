@@ -14,8 +14,8 @@ EASY_MAX_KNOWN = float(load_config()["known_max"])   # more known lines than thi
 HARD_MAX = 0.4                 # more lines than this above the high cut is too hard for now
 REWATCH_HARD_MAX = 0.55
 TIERS = [
-    ("tier1", "Tier 1: mine now", "In your range and already on disk. A deck is one command away."),
-    ("tier2", "Tier 2: go get it", "In your range, on your MAL, not on disk."),
+    ("tier1", "Tier 1: mine now", "In your range and already in your library. A deck is one command away."),
+    ("tier2", "Tier 2: go get it", "In your range, on your MAL, not in your library."),
     ("rewatch", "Rewatch: comprehensible input", "Completed shows that land in or just above your range. Known plot makes harder lines cheaper."),
     ("tier3", "Tier 3: parked", "Too hard for now. Sorted by how close they are; they move up as your window moves."),
     ("easy", "Bottom shelf: mostly known", "Most lines are below your floor. Watch freely, little to mine."),
@@ -100,7 +100,7 @@ Bottom shelf = over {EASY_MAX_KNOWN:.0%} below the floor; parked = over {HARD_MA
             continue
         parts.append("<table><tr><th>Show</th><th>Rating</th><th>Lines</th><th>Known</th><th>In range</th><th>Hard</th><th></th><th>MAL</th><th>Where</th></tr>")
         for r in rs:
-            where = ("on disk: " + html.escape(r["dirs"][0])) if r["on_disk"] else (f'<a href="https://jimaku.cc/entry/{r["jimaku_id"]}">jimaku</a>' if r["jimaku_id"] else "")
+            where = ("in your library: " + html.escape(r["dirs"][0])) if r["on_disk"] else (f'<a href="https://jimaku.cc/entry/{r["jimaku_id"]}">jimaku</a>' if r["jimaku_id"] else "")
             rating = (f"<b>{r['my_score']}</b> <span class=muted>({r['mal_score']})</span>" if r["my_score"] and r["mal_score"]
                       else f"<b>{r['my_score']}</b>" if r["my_score"] else f"{r['mal_score']}" if r["mal_score"] else "")
             parts.append(f"<tr><td>{html.escape(r['title'])}<div class=muted>{html.escape(r['title_eng'] or '')}</div></td>"
