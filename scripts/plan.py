@@ -14,7 +14,7 @@ EASY_MAX_KNOWN = float(load_config()["known_max"])   # more known lines than thi
 HARD_MAX = 0.4                 # more lines than this above the high cut is too hard for now
 REWATCH_HARD_MAX = 0.55
 TIERS = [
-    ("tier1", "Tier 1: mine now", "In your range and already in your library. A deck is one command away."),
+    ("tier1", "Tier 1: ready for mining", "In your range and already in your library. A deck is one command away."),
     ("tier2", "Tier 2: go get it", "In your range, on your MAL, not in your library."),
     ("rewatch", "Rewatch: comprehensible input", "Completed shows that land in or just above your range. Known plot makes harder lines cheaper."),
     ("tier3", "Tier 3: parked", "Too hard for now. Sorted by how close they are; they move up as your window moves."),
