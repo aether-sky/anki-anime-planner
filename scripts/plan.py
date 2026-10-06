@@ -4,9 +4,8 @@ Each show's non-trivial lines split into below the learner's floor (the difficul
 which they usually suspend a card rather than keep it, for whatever reason), in range, and
 above their ceiling (where they start suspending again because lines are too hard). A show
 is not worth mining when most lines sit below the floor, too hard when too many are above
-the ceiling, in range otherwise. While
-no ceiling has been found, nothing counts as too hard. Within a tier, higher rated shows
-come first.
+the ceiling, in range otherwise. While no ceiling has been found, nothing counts as too
+hard. Within a tier, higher rated shows come first.
 """
 import html, os
 from common import DATA, CACHE, load_config, load_json, save_json

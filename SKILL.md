@@ -31,8 +31,10 @@ The steps, each cached so a re-run after new Anki activity is quick:
    `cache/disk.json`. Listings are cached by mtime in `cache/dirlist.json`. Filename parsing is
    guarded against anitopy hanging; a "hung on" line in stderr is informational.
 3. `match.py` – MAL + disk + AniList ids + jimaku (`jimaku.py`, API, cached per lookup) →
-   `cache/matches.json`. Read `matches.json["unmatched_disk"]`, ignore non-anime, put real misses
-   in `config.json` `title_overrides` as `{"disk title": mal_id}`, re-run.
+   `cache/matches.json`. Disk shows that miss the MAL list are searched on AniList by title
+   (batched, cached), so non-anime folders never reach jimaku. Read
+   `matches.json["unmatched_disk"]`, ignore non-anime, put real misses in `config.json`
+   `title_overrides` as `{"disk title": mal_id}`, re-run.
 4. `collect_anki.py` – needs Anki open with AnkiConnect. Optional; the plan is provisional without it.
 5. `fetch_subs.py` – up to `episodes_per_show` Japanese sub files per show, local pack first.
 6. `score.py` – tokenizes every line (cached under `cache/tokens/`), fits the learner window from
@@ -53,10 +55,11 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
 - The user's vocabulary is the words on cards they suspended because they were easy (suspended
   and not above their ceiling) plus cards they have learned (kept, interval 21+ days). Cards they
   are still studying or gave up on do not count.
-- Cards sit in episode order. The last card the user kept in an episode marks how far they have
-  evaluated; suspended cards beyond it came from a bulk action (the `short` tag) and count for
-  nothing, neither as labels nor as vocabulary. An episode's suspension rate is measured only up
-  to that point. It is small at first and grows with study, so a
+- Cards sit in episode order (a new card's `due` is its position in the deck). The last new card
+  the user kept in an episode marks how far they have evaluated; suspended cards beyond it came
+  from a bulk action (the `short` tag) and count for nothing, neither as labels nor as vocabulary.
+  A card that has been studied is evaluated by definition. An episode's suspension rate is
+  measured only up to that point. It is small at first and grows with study, so a
   show's "Vocab you know" is a lower bound. Because "easy" depends on the ceiling, the fit runs two
   rounds. When fitting, each episode's cards are scored against the vocabulary from the *other*
   episodes, otherwise every card looks fully known.

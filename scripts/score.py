@@ -1,17 +1,19 @@
 """Score every subtitle line for difficulty and fit the learner's window from Anki.
 
-Lines under TRIVIAL_CHARS kana/kanji are trivial regardless of content. Longer lines
-get a difficulty score z from weighted features: how many of the line's words the learner
-does not know and how rare those are, general vocabulary rarity, clause structure,
-register, speed. The learner knows a word when it is on a card they suspended because it
-was easy (a suspended card that is not above their ceiling) or on a card they have learned
-(kept, with an interval of LEARNED_MIN_INTERVAL days or more). Since "easy" depends on the
-ceiling and the ceiling depends on the scores, the fit runs twice. The learner's window is two cuts on that scale, fitted from which of
-their cards they suspended: below the low cut they suspend as already known, above the
-high cut they suspend as too hard, in between they keep. Only episodes the learner has
-actually evaluated (enough suspensions) are used. When nothing they evaluated was hard
-enough for suspensions to rise again, the high cut is reported as not found rather
-than guessed. Writes cache/scores.json.
+Lines under TRIVIAL_CHARS kana/kanji are trivial regardless of content. Longer lines get
+a difficulty score z from weighted features: how many of the line's words the learner does
+not know and how rare those are, general vocabulary rarity, clause structure, register,
+speed. The learner knows a word when it is on a card they suspended because it was easy (a
+suspended card that is not above their ceiling) or on a card they have learned (kept, with
+an interval of LEARNED_MIN_INTERVAL days or more).
+
+The window is two cuts on z, fitted from which cards the learner suspended: below the floor
+they usually suspend, between the cuts they keep, above the ceiling they suspend again
+because lines are too hard. Only evaluated cards count: an episode must have enough
+suspensions, and within it only cards up to the last one the learner kept, since later
+suspensions come from bulk actions. Because "easy" depends on the ceiling and the ceiling
+on the scores, the fit runs two rounds. When nothing evaluated was hard enough for
+suspensions to rise again, the ceiling is reported as not found. Writes cache/scores.json.
 """
 import collections, math, os, re
 import numpy as np
@@ -22,10 +24,12 @@ TOKENS = os.path.join(CACHE, "tokens")
 os.makedirs(TOKENS, exist_ok=True)
 
 TRIVIAL_CHARS = 10
-EVALUATED_MIN_RATE = 0.2         # an episode counts as evaluated once this share of its cards is suspended
+EVALUATED_MIN_RATE = 0.2       # an episode counts as evaluated once this share of its cards is suspended
 MIN_EVALUATED_CARDS = 60
 LEARNED_MIN_INTERVAL = 21      # days; a kept card with at least this interval counts as learned
+REPEAT_RATE = 0.005            # a word seen at least this often per line of a show is learnable in context
 JA = re.compile(r"[ぁ-ゖァ-ヺー一-鿿々〆ヵヶ]")
+KANJI = re.compile(r"[一-鿿々]")
 CONTENT_POS = {"名詞", "動詞", "形容詞", "副詞", "形状詞", "代名詞", "連体詞", "接続詞"}
 SKIP_POS2 = {"数詞", "固有名詞"}
 CONTRACTION = re.compile(r"てん|ねえ|ねぇ|ちゃ|じゃ(?!ない)|っす|やが|んの|とく|ってば|ねー|かよ|だろ\b|やん|ちまう|てえ|なきゃ|ぜ$|ぞ$|っつ")
@@ -76,14 +80,11 @@ def tokenize(text):
     return toks
 
 
-REPEAT_RATE = 0.005            # a word seen at least this often per line of a show is learnable in context
-
-
 def content_lemmas(toks):
     """Content words of a line. A lone kana (ん, っ, ー and friends) tagged as a noun is a
     segmentation slip, not a word, and would otherwise count as an ultra-rare unknown."""
     return [l for l, p1, p2, _ in toks
-            if p1 in CONTENT_POS and p2 not in SKIP_POS2 and not (len(l) == 1 and not re.search(r"[一-鿿々]", l))]
+            if p1 in CONTENT_POS and p2 not in SKIP_POS2 and not (len(l) == 1 and not KANJI.search(l))]
 
 
 def features(text, duration, top, toks, rank, show_counts, show_lines, known):
@@ -114,7 +115,7 @@ def features(text, duration, top, toks, rank, show_counts, show_lines, known):
 
 def fit_cuts(z, suspended):
     """Two cuts on the difficulty scale. Suspension probability is sigma(low - z) + sigma(z - high):
-    high near the bottom (known), low in the middle (kept), rising again past the high cut (too hard).
+    high near the bottom (easy), low in the middle (kept), rising again past the ceiling (too hard).
     Grid search on the log-likelihood; the high cut may land beyond the data, meaning not found."""
     z, y = np.asarray(z), np.asarray(suspended, dtype=float)
     lo_grid = np.linspace(z.min() - 1, z.max(), 80)
@@ -146,9 +147,53 @@ def show_tokens(key, folder):
     return lines, toks
 
 
+def episode_of(card):
+    """(show, episode) for a card. Decks from this skill carry show and S01E01 tags; decks
+    from other tools usually have neither, so the deck name stands in."""
+    ep = next((t for t in card["tags"] if EPISODE_TAG.match(t)), "")
+    show = next((t for t in card["tags"] if not EPISODE_TAG.match(t) and t != "short"), "")
+    if not ep:
+        parts = card["deck"].split("::")
+        show, ep = (show or parts[0]), (parts[-1] if len(parts) > 1 else card["deck"])
+    return show, ep
+
+
+def mark_evaluated(cards):
+    """Set card["evaluated"]. The learner works through a deck in order, so the last card
+    they kept marks how far they got; a new card beyond it that is suspended came from a
+    bulk action (the "short" tag), not a decision. Order is the new-card position (due of
+    an unstudied card); a card that has been studied is evaluated by definition."""
+    by_episode = collections.defaultdict(list)
+    for c in cards:
+        by_episode[episode_of(c)].append(c)
+    for cs in by_episode.values():
+        def position(c):
+            return c["due"] if c.get("type", 0) == 0 else -1          # studied cards sort before every new card
+        kept_new = [position(c) for c in cs if not c["suspended"] and c.get("type", 0) == 0]
+        frontier = max(kept_new) if kept_new else max(position(c) for c in cs)
+        for c in cs:
+            c["evaluated"] = position(c) <= frontier
+    return by_episode
+
+
+def vocabulary(cards, card_toks, card_z=None, cut_high=None):
+    """Lemmas the learner knows: words on evaluated cards they suspended because they were easy
+    (not above the ceiling) and on cards they have learned. Before any ceiling exists, only
+    suspended trivial cards count as easy."""
+    learned = [c for c in cards if not c["suspended"] and c["interval"] >= LEARNED_MIN_INTERVAL]
+    if card_z is None:
+        easy = [c for c in cards if c["suspended"] and c["evaluated"] and len(JA.findall(clean(c["text"]))) < TRIVIAL_CHARS]
+    else:
+        easy = [c for c in cards if c["suspended"] and c["evaluated"]
+                and (c["card_id"] not in card_z or cut_high is None or card_z[c["card_id"]] <= cut_high)]
+    words = {l for c in learned + easy for l in content_lemmas(card_toks[c["card_id"]])}
+    return words, len(learned), len(easy)
+
+
 def main():
     shows = load_json(os.path.join(CACHE, "matches.json"))["shows"]
     anki = load_json(os.path.join(CACHE, "anki.json"))
+    cards = anki["cards"] if anki and anki.get("cards") else []       # an empty collection is the same as none
 
     # pass 1: lines and tokens per show, corpus frequency
     corpus, freq = {}, collections.Counter()
@@ -165,28 +210,12 @@ def main():
     rank = {lemma: i + 1 for i, (lemma, _) in enumerate(freq.most_common())}
     log(f"{len(corpus)} shows, {sum(len(v[0]) for v in corpus.values())} lines, {len(rank)} distinct words")
 
-    # the learner's cards, grouped by episode. Decks from this skill carry show and S01E01
-    # tags; decks from other tools usually have neither, so the deck name stands in.
-    cards, card_toks, by_episode = [], {}, collections.defaultdict(list)
-    if anki:
-        cards = anki["cards"]
-        card_toks = {c["card_id"]: tokenize(clean(c["text"])) for c in cards}
-        for c in cards:
-            ep = next((t for t in c["tags"] if EPISODE_TAG.match(t)), "")
-            show = next((t for t in c["tags"] if not EPISODE_TAG.match(t) and t != "short"), "")
-            if not ep:
-                parts = c["deck"].split("::")
-                show, ep = (show or parts[0]), (parts[-1] if len(parts) > 1 else c["deck"])
-            c["episode"] = (show, ep)
-            by_episode[(show, ep)].append(c)
-        # Cards are in episode order (ids were assigned in time order). The learner works through a
-        # deck front to back, so the last card they kept marks how far they got; a suspended card
-        # beyond it came from a bulk action (the "short" tag), not a decision, and is unevaluated.
-        for cs in by_episode.values():
-            kept = [c["card_id"] for c in cs if not c["suspended"]]
-            frontier = max(kept) if kept else max(c["card_id"] for c in cs)
-            for c in cs:
-                c["evaluated"] = c["card_id"] <= frontier
+    card_toks = {c["card_id"]: tokenize(clean(c["text"])) for c in cards}
+    by_episode = mark_evaluated(cards)
+    for c in cards:
+        c["episode"] = episode_of(c)
+    # A deck is a sample of its show, so the in-show repetition discount uses counts over
+    # all the learner's cards from that show, at the same per-line rate as the corpus.
     show_counts_by_tag, show_lines_by_tag = {}, collections.Counter()
     for (show, ep), cs in by_episode.items():
         counts = show_counts_by_tag.setdefault(show, collections.Counter())
@@ -194,14 +223,9 @@ def main():
             counts.update(content_lemmas(card_toks[c["card_id"]]))
         show_lines_by_tag[show] += len(cs)
 
-    def words_of(selected):
-        return {l for c in selected for l in content_lemmas(card_toks[c["card_id"]])}
-
-    learned = [c for c in cards if not c["suspended"] and c["interval"] >= LEARNED_MIN_INTERVAL]
-    easy = [c for c in cards if c["suspended"] and c["evaluated"] and len(JA.findall(clean(c["text"]))) < TRIVIAL_CHARS]
-    known = words_of(learned + easy) if anki else None
-
-    for round_ in range(2 if anki else 1):
+    known, n_learned, n_easy = vocabulary(cards, card_toks) if cards else (None, 0, 0)
+    rounds = 2 if cards else 1
+    for round_ in range(rounds):
         # pass 2: features for every non-trivial line, standardised over the corpus; per-show vocabulary coverage
         rows, index, vocab = [], [], {}
         for key, (lines, toks) in corpus.items():
@@ -221,7 +245,7 @@ def main():
 
         cut_low = cut_high = None
         evaluated_cards = 0
-        if anki:
+        if cards:
             # Each episode's cards are scored against the vocabulary of the other episodes: with
             # their own words in, every card looks fully known and the floor floats up the scale.
             card_z = {}
@@ -259,13 +283,11 @@ def main():
                 log("every evaluated card is on one side (all suspended or none); the window cannot be placed")
             else:
                 log(f"only {evaluated_cards} evaluated long cards; need {MIN_EVALUATED_CARDS}")
-            # A suspended card that is not above the ceiling was suspended because it was easy.
-            easy = [c for c in cards if c["suspended"] and c["evaluated"]
-                    and (c["card_id"] not in card_z or cut_high is None or card_z[c["card_id"]] <= cut_high)]
-            known = words_of(learned + easy)
+            if round_ < rounds - 1:                                  # the last round's scores and vocabulary stay consistent
+                known, n_learned, n_easy = vocabulary(cards, card_toks, card_z, cut_high)
 
     model = {"features": FEATURES, "weights": WEIGHTS.tolist(), "mu": mu.tolist(), "sd": sd.tolist(),
-             "vocabulary": len(known) if known is not None else 0, "learned_cards": len(learned), "easy_cards": len(easy) if anki else 0}
+             "vocabulary": len(known) if known is not None else 0, "learned_cards": n_learned, "easy_cards": n_easy}
     if cut_low is None:
         cut_low = float(np.quantile(z_all, 0.3)); cut_high = float(np.quantile(z_all, 0.8))
         model.update({"provisional": True, "fitted_on": evaluated_cards})
@@ -294,7 +316,7 @@ def main():
     save_json(os.path.join(CACHE, "scores.json"), {"model": model, "shows": out})
     print(f"scored {len(out)} shows; window {'fitted on %d evaluated cards' % evaluated_cards if not model['provisional'] else 'PROVISIONAL'}"
           + ("; ceiling not found yet" if cut_high is None else "")
-          + (f"; vocabulary {model['vocabulary']} known words" if anki else ""))
+          + (f"; vocabulary {model['vocabulary']} known words" if cards else ""))
 
 
 if __name__ == "__main__":

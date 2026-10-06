@@ -35,6 +35,7 @@ def main():
                     "note_id": n["noteId"], "card_id": cid, "text": text, "deck": c["deckName"],
                     "tags": n["tags"], "suspended": c["queue"] == -1, "interval": c["interval"],
                     "reps": c["reps"], "lapses": c["lapses"], "ease": c["factor"], "due": c["due"],
+                    "type": c["type"],              # 0 new (due is its position in the deck), 1 learning, 2 review
                 })
     save_json(os.path.join(CACHE, "anki.json"), {"cards": cards})
     susp = sum(c["suspended"] for c in cards); reviewed = sum(c["reps"] > 0 for c in cards)

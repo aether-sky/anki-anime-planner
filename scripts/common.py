@@ -43,10 +43,15 @@ def load_config():
 
 
 def scan_roots(cfg):
+    """Configured roots, else every local fixed drive on Windows (network shares and optical
+    drives are skipped: a sleeping NAS turns an 8-second scan into an hour) or the home folder."""
     if cfg.get("scan_roots"):
         return cfg["scan_roots"]
     if os.name == "nt":
-        return [f"{letter}:\\" for letter in string.ascii_uppercase if os.path.isdir(f"{letter}:\\")]
+        import ctypes
+        DRIVE_FIXED = 3
+        return [f"{letter}:\\" for letter in string.ascii_uppercase
+                if ctypes.windll.kernel32.GetDriveTypeW(f"{letter}:\\") == DRIVE_FIXED]
     return [os.path.expanduser("~")]
 
 
@@ -98,11 +103,21 @@ def http_get(url, binary=False, retries=3, headers=None):
             time.sleep(2 * (attempt + 1))
 
 
-def http_post_json(url, payload):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-                                 headers={"User-Agent": USER_AGENT, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read().decode("utf-8"))
+def http_post_json(url, payload, retries=5):
+    """POST JSON. A 429 or 5xx is retried after the server's Retry-After (or a growing pause);
+    AniList throttles to a few dozen requests a minute and says so with a 429."""
+    body = json.dumps(payload).encode("utf-8")
+    for attempt in range(retries):
+        req = urllib.request.Request(url, data=body, headers={"User-Agent": USER_AGENT, "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if (e.code != 429 and e.code < 500) or attempt == retries - 1:
+                raise
+            wait = int(e.headers.get("Retry-After") or 0) or 10 * (attempt + 1)
+            log(f"  {url.split('//')[-1].split('/')[0]} answered {e.code}, waiting {wait}s")
+            time.sleep(wait)
 
 
 def norm_title(t):

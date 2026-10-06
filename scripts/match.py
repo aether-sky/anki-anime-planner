@@ -2,9 +2,10 @@
 
 Each MAL entry gets its AniList id (via AniList's public GraphQL), its jimaku entry
 (by AniList id), the video files found on disk, and a local sub pack folder if one
-is named after it. Disk shows that match nothing on MAL are looked up on jimaku by
-name; the rest are listed under "unmatched_disk" for a person to resolve. Fixes go
-in config.json "title_overrides" as {"disk title": mal_id}.
+is named after it. Disk shows that match nothing on MAL are searched on AniList by
+title; a hit whose title resembles the folder name joins through its AniList id, so
+non-anime folders never reach jimaku. The rest are listed under "unmatched_disk" for a
+person to resolve; fixes go in config.json "title_overrides" as {"disk title": mal_id}.
 """
 import difflib, os, re, time
 import jimaku
@@ -12,6 +13,7 @@ from common import CACHE, load_config, load_json, save_json, http_post_json, nor
 
 ROMAN = {"ii": 2, "iii": 3, "iv": 4, "v": 5}
 SEASON_WORDS = re.compile(r"\b(\d+(st|nd|rd|th) season|season \d+|part \d+|ii|iii|iv|s\d|\d)\b")
+ANILIST = "https://graphql.anilist.co"
 
 
 def anilist_ids(mal_ids):
@@ -21,7 +23,7 @@ def anilist_ids(mal_ids):
     for i in range(0, len(missing), 50):
         batch = missing[i:i + 50]
         q = "query($ids:[Int]){Page(perPage:50){media(idMal_in:$ids,type:ANIME){id idMal}}}"
-        r = http_post_json("https://graphql.anilist.co", {"query": q, "variables": {"ids": batch}})
+        r = http_post_json(ANILIST, {"query": q, "variables": {"ids": batch}})
         found = {m["idMal"]: m["id"] for m in r["data"]["Page"]["media"]}
         for m in batch:
             cache[str(m)] = found.get(m)
@@ -29,6 +31,26 @@ def anilist_ids(mal_ids):
         time.sleep(1)
     save_json(cache_path, cache)
     return {m: cache.get(str(m)) for m in mal_ids}
+
+
+def anilist_search(titles):
+    """{title: [{id, romaji, english}, ...]} for free-text titles, five per request, cached so a
+    title is only ever searched once."""
+    cache_path = os.path.join(CACHE, "anilist_search.json")
+    cache = load_json(cache_path, {})
+    missing = [t for t in dict.fromkeys(titles) if t not in cache]
+    for i in range(0, len(missing), 5):
+        batch = missing[i:i + 5]
+        q = ("query(" + ",".join(f"$t{k}:String" for k in range(len(batch))) + "){"
+             + "".join(f"r{k}:Page(perPage:3){{media(search:$t{k},type:ANIME){{id title{{romaji english}}}}}}" for k in range(len(batch))) + "}")
+        r = http_post_json(ANILIST, {"query": q, "variables": {f"t{k}": t for k, t in enumerate(batch)}})
+        for k, t in enumerate(batch):
+            cache[t] = [{"id": m["id"], "romaji": m["title"]["romaji"] or "", "english": m["title"]["english"] or ""}
+                        for m in r["data"][f"r{k}"]["media"]]
+        save_json(cache_path, cache)                              # progress survives a throttle or a crash
+        log(f"anilist search: {min(i + 5, len(missing))}/{len(missing)}")
+        time.sleep(2)
+    return {t: cache.get(t, []) for t in titles}
 
 
 def season_of(title):
@@ -95,7 +117,9 @@ def main():
         matches[e["mal_id"]] = {**e, "key": str(e["mal_id"]), "anilist_id": aid, "jimaku_id": j["id"] if j else None,
                                 "jimaku_name": j["name"] if j else None, "files": [], "disk_titles": [],
                                 "local_subs": disk["sub_packs"].get(e["title"], {}).get("folder")}
-    unmatched, disk_only = [], {}
+
+    # First pass: disk shows against the MAL list. Whatever is left is searched on AniList by title.
+    leftovers = []
     for show in disk["shows"]:
         if show["title"] in overrides:
             e, how = matches.get(overrides[show["title"]]), "override"
@@ -104,9 +128,15 @@ def main():
             e = matches.get(e["mal_id"]) if e else None
         if e:
             e["files"] += show["files"]; e["disk_titles"].append(f"{show['title']} (S{show['season'] or 1}, {how})")
-            continue
-        # Not on the MAL list: a show on disk still counts if jimaku knows it.
-        j, how = best_match(show, build_index(jimaku.search(show["title"]), ("name", "english_name", "japanese_name")), "name", 0.85)
+        else:
+            leftovers.append(show)
+
+    unmatched, disk_only = [], {}
+    searched = anilist_search([s["title"] for s in leftovers])
+    for show in leftovers:
+        hits = [{"id": h["id"], "name": h["romaji"], "english_name": h["english"]} for h in searched[show["title"]]]
+        hit, how = best_match(show, build_index(hits, ("name", "english_name")), "name", 0.7)   # AniList already ranked these by relevance
+        j = jimaku.by_anilist(hit["id"]) if hit else None
         if j:
             e = disk_only.setdefault(j["id"], {
                 "mal_id": None, "key": f"j{j['id']}", "title": j["name"], "title_eng": j["english_name"] or "", "status": "not_on_mal",
