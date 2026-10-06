@@ -2,8 +2,9 @@
 
 A Claude Code skill that ranks the anime you own and the anime on your MyAnimeList by how
 well their Japanese fits your current level, then builds subs2srs-style Anki decks for the
-ones worth mining. Your level is read from your existing Anki sentence cards: what you
-suspend as already known, and what you suspend as too hard. No flags, no tagging ritual.
+ones worth mining. Your level is read from your existing Anki sentence cards: the easy end
+where you stop bothering to keep cards, and the hard end where you give up on them. No
+flags, no tagging ritual.
 
 ![The plan report: tier 1 shows with their rating, line counts, and a bar of known, in-range and too-hard lines](docs/report.png)
 

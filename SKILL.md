@@ -44,10 +44,16 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
 ## How the level is estimated
 
 - Lines under 10 kana/kanji are trivial for everyone; they are never evidence of difficulty.
-- Every non-trivial line gets a difficulty score z from weighted features: character count,
-  rarest-word rank, rare-word count, predicate count, verb/auxiliary chain length, contractions,
-  classical forms, keigo, characters per second, background-line flag. Rare words that repeat
-  5+ times within a show are discounted. Features are standardised over the whole sub corpus.
+- Every non-trivial line gets a difficulty score z from weighted features: how many of its words
+  are absent from the user's vocabulary and how rare the rarest of those is (the heaviest
+  weights), character count, rarest-word rank, rare-word count, predicate count, verb/auxiliary
+  chain length, contractions, classical forms, keigo, characters per second, background-line
+  flag. Words that repeat often within a show are discounted; a lone kana tagged as a noun is a
+  tokenizer slip and is ignored. Features are standardised over the whole sub corpus.
+- The user's vocabulary is every content word on any card they have, suspended or not. It is
+  small at first (hundreds of words) and only grows by mining, so a show's "Vocab you have" is a
+  lower bound. When fitting the cuts, each episode's cards are scored against the vocabulary of
+  the *other* episodes, otherwise every card looks fully known.
 - Suspensions are read without any flags or tags, because most of a user's history predates the
   tool. People suspend both what they already know (low z) and what is too hard (high z), so the
   window is two cuts on z: suspension probability is high below the low cut, low between, and
@@ -57,14 +63,15 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
 - If suspensions never rise again within the user's data, the high cut is reported as not found
   and nothing is marked too hard. Say that plainly; it means they should mine something harder.
 - Per show: `easy_share` (below the low cut), `hard_share` (above the high cut, 0 while not found).
-- To the user, the low cut is their **floor** (where they stop suspending lines as already known)
-  and the high cut is their **ceiling** (where they start suspending lines as too hard). Use those
-  words in chat and in the report; "cut" is the code's name for them.
+- To the user, the low cut is their **floor** (the difficulty under which they usually suspend a
+  card rather than keep it; the tool does not know why, so never say "known" or "too easy" as if
+  it did) and the high cut is their **ceiling** (where they start suspending again because lines
+  are too hard). Use those words in chat and in the report; "cut" is the code's name for them.
 
 ## Tiers (plan.py)
 
-easy = over 85 % of lines known (this learner suspends about two thirds of any episode as known,
-so a lower bar emptied every tier) · tier3 = over 40 % too hard · tier1 = otherwise in range and
+easy = over 85 % of lines below the floor (`floor_max`; this learner suspends about two thirds of
+any episode, so a lower bar emptied every tier) · tier3 = over 40 % too hard · tier1 = otherwise in range and
 in their library · tier2 = in range, on MAL, not in their library · rewatch = completed and in or just above range.
 Within a tier, the user's own MAL score orders first, then the MAL average, then the share of
 lines in range. The thresholds are the constants at the top of plan.py.
