@@ -5,11 +5,11 @@ and it can be given on the command line. config.json is created on first run.
 """
 import json, os, re, shutil, string, sys, time, urllib.error, urllib.request
 
-DATA = os.path.join(os.path.expanduser("~"), ".anime-planner")
+DATA = os.path.join(os.path.expanduser("~"), ".anki-anime-planner")
 CACHE = os.path.join(DATA, "cache")
 SUBS = os.path.join(CACHE, "subs")
 CONFIG_PATH = os.path.join(DATA, "config.json")
-USER_AGENT = "anime-planner/0.1 (personal study tool)"
+USER_AGENT = "anki-anime-planner/0.1 (personal study tool)"
 
 DEFAULT_CONFIG = {
     "mal_user": "",

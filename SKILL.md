@@ -1,5 +1,5 @@
 ---
-name: anime-planner
+name: anki-anime-planner
 description: Rank the user's anime (MAL list + what is on disk) by how well each show's Japanese fits their current level, estimated from which Anki sentence cards they suspend, and produce a tiered learning plan with decks to mine next.
 ---
 
@@ -7,12 +7,12 @@ description: Rank the user's anime (MAL list + what is on disk) by how well each
 
 Deterministic scripts do the collecting and scoring; you do the judgement calls:
 fixing title mismatches, reading the plan back to the user, and building decks when asked.
-Nothing here writes to Anki. Data lives in `~/.anime-planner/` (config, cache, plan, report).
+Nothing here writes to Anki. Data lives in `~/.anki-anime-planner/` (config, cache, plan, report).
 
 ## Setup the user needs (and nothing more)
 
 - `pip install -r requirements.txt` and ffmpeg on PATH (or `"ffmpeg"` in config).
-- A jimaku API key in `~/.anime-planner/config.json` as `"jimaku_api_key"`: they log in at
+- A jimaku API key in `~/.anki-anime-planner/config.json` as `"jimaku_api_key"`: they log in at
   jimaku.cc, open their account page, create a key. Every script that needs it stops with that
   instruction when it is missing. Ask for the key once; never guess or search for one.
 - Their MAL username, passed to `run.py`. Everything else has a default: all local drives are
@@ -37,7 +37,7 @@ The steps, each cached so a re-run after new Anki activity is quick:
 5. `fetch_subs.py` – up to `episodes_per_show` Japanese sub files per show, local pack first.
 6. `score.py` – tokenizes every line (cached under `cache/tokens/`), fits the learner window from
    their cards, writes `cache/scores.json`.
-7. `plan.py` – tiers → `~/.anime-planner/plan.json` and `report.html`.
+7. `plan.py` – tiers → `~/.anki-anime-planner/plan.json` and `report.html`.
 
 Tests: `python -m unittest discover -s tests/unit` from the skill folder.
 
