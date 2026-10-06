@@ -14,8 +14,8 @@ BAD = re.compile(r"chs|cht|zh|简|繁|ja-en|_en\b|english|with furigana|\.en\.",
 
 def episode_of(name):
     base = re.sub(r"\[[^\]]*\]|\([^)]*\)|\d{3,4}p|x26[45]|10bit", " ", os.path.splitext(name)[0])
-    if re.search(r"\b\d{1,3}\s*-\s*\d{1,3}\b", base):
-        return None                                   # a range like 01-02 covers two episodes
+    if re.search(r"(?<!\d)\d{1,3}\s*-\s*\d{1,3}(?!\d)", base):
+        return None                                   # a range like 01-02 or S03E01-02 covers two episodes
     m = re.search(r"S\d+E(\d+)", base, re.I) or re.search(r"(?<![\d.])(\d{1,3})(?![\d.])", base[len(base) // 3:]) or re.search(r"(?<![\d.])(\d{1,3})(?![\d.])", base)
     return int(m.group(1)) if m else None
 

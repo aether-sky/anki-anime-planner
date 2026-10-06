@@ -22,7 +22,7 @@ GENERIC = re.compile(r"^(season ?\d+|s\d+|specials?|extras?|featurettes?|bonus|o
 JUNK = re.compile(r"\b(av1|x26[45]|h\.?26[45]|hevc|avc|10 ?bits?|8 ?bits?|hi10p?|\d{3,4}p|\d{3,4}x\d{3,4}|bd|bdrip|bluray|blu-ray|"
                   r"webrip|web-dl|web|dl|hdtv|dvd(rip)?|dual[ -]?audio|multi[ -]?subs?|eng[ -]?subs?|subbed|dubbed|uncensored|"
                   r"complete|batch|remux|aac|flac|opus|ac3|eac3|dd\+?|ddp\d(\.\d)?|truehd|dts|\d\.\d|v\d|end|fin|final)\b", re.I)
-EPISODE_TITLE = re.compile(r"^\d{1,3}\s*[-–.]\s*\S")           # "01 - Boy Meets Fluffy Girl"
+EPISODE_TITLE = re.compile(r"^(\d{1,3})\s*[-–.]\s*\S")         # "01 - Boy Meets Fluffy Girl"
 
 
 def fallback_parse(name):
@@ -56,6 +56,8 @@ def parse(name):
     episode = p.get("episode_number")
     if isinstance(episode, list):
         episode = episode[0]
+    if episode is None and EPISODE_TITLE.match(name):               # "01 - Episode Title.mkv"
+        episode = EPISODE_TITLE.match(name).group(1)
     m = re.search(r"\b(\d+)(?:st|nd|rd|th) season\b|\bseason (\d+)\b", title, re.I)
     if m and not season:
         season, title = (m.group(1) or m.group(2)), title[:m.start()].strip()
