@@ -50,10 +50,16 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
   chain length, contractions, classical forms, keigo, characters per second, background-line
   flag. Words that repeat often within a show are discounted; a lone kana tagged as a noun is a
   tokenizer slip and is ignored. Features are standardised over the whole sub corpus.
-- The user's vocabulary is every content word on any card they have, suspended or not. It is
-  small at first (hundreds of words) and only grows by mining, so a show's "Vocab you have" is a
-  lower bound. When fitting the cuts, each episode's cards are scored against the vocabulary of
-  the *other* episodes, otherwise every card looks fully known.
+- The user's vocabulary is the words on cards they suspended because they were easy (suspended
+  and not above their ceiling) plus cards they have learned (kept, interval 21+ days). Cards they
+  are still studying or gave up on do not count.
+- Cards sit in episode order. The last card the user kept in an episode marks how far they have
+  evaluated; suspended cards beyond it came from a bulk action (the `short` tag) and count for
+  nothing, neither as labels nor as vocabulary. An episode's suspension rate is measured only up
+  to that point. It is small at first and grows with study, so a
+  show's "Vocab you know" is a lower bound. Because "easy" depends on the ceiling, the fit runs two
+  rounds. When fitting, each episode's cards are scored against the vocabulary from the *other*
+  episodes, otherwise every card looks fully known.
 - Suspensions are read without any flags or tags, because most of a user's history predates the
   tool. People suspend both what they already know (low z) and what is too hard (high z), so the
   window is two cuts on z: suspension probability is high below the low cut, low between, and
