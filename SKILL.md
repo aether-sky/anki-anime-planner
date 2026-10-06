@@ -57,6 +57,9 @@ Tests: `python -m unittest discover -s tests/unit` from the skill folder.
 - If suspensions never rise again within the user's data, the high cut is reported as not found
   and nothing is marked too hard. Say that plainly; it means they should mine something harder.
 - Per show: `easy_share` (below the low cut), `hard_share` (above the high cut, 0 while not found).
+- To the user, the low cut is their **floor** (where they stop suspending lines as already known)
+  and the high cut is their **ceiling** (where they start suspending lines as too hard). Use those
+  words in chat and in the report; "cut" is the code's name for them.
 
 ## Tiers (plan.py)
 
