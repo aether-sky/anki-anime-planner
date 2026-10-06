@@ -1,8 +1,11 @@
 """Score every subtitle line for difficulty and fit the learner's window from Anki.
 
 Lines under TRIVIAL_CHARS kana/kanji are trivial regardless of content. Longer lines
-get a difficulty score z from weighted features (vocabulary rarity, clause structure,
-register, speed). The learner's window is two cuts on that scale, fitted from which of
+get a difficulty score z from weighted features: how many of the line's words are absent
+from the learner's cards and how rare those are, general vocabulary rarity, clause
+structure, register, speed. The learner's vocabulary is every content word on a card they
+have, suspended or not; a card they suspended at the easy end is a word they did not
+need, a card they kept is a word they are studying. The learner's window is two cuts on that scale, fitted from which of
 their cards they suspended: below the low cut they suspend as already known, above the
 high cut they suspend as too hard, in between they keep. Only episodes the learner has
 actually evaluated (enough suspensions) are used. When nothing they evaluated was hard
@@ -26,8 +29,8 @@ SKIP_POS2 = {"数詞", "固有名詞"}
 CONTRACTION = re.compile(r"てん|ねえ|ねぇ|ちゃ|じゃ(?!ない)|っす|やが|んの|とく|ってば|ねー|かよ|だろ\b|やん|ちまう|てえ|なきゃ|ぜ$|ぞ$|っつ")
 CLASSICAL = re.compile(r"たる|べし|べき|ざる|せよ|まい|ごとし|なり$|ぬ$|おる|ござ|しかる|ゆえ|いかん|ぬか")
 KEIGO = re.compile(r"ございま|なさ|いただ|くださ|おっしゃ|いらっしゃ|申し|致し|いたし|ご覧|お[ぁ-ゖ一-鿿]{1,3}(になる|する|です|ください)|でございます")
-FEATURES = ["chars", "rarest_log", "n_rare", "n_pred", "max_chain", "contractions", "classical", "keigo", "cps", "top"]
-WEIGHTS = np.array([0.8, 1.0, 0.8, 0.5, 0.3, 0.4, 0.5, 0.3, 0.3, 0.2])
+FEATURES = ["chars", "n_unknown", "unknown_rarest_log", "rarest_log", "n_rare", "n_pred", "max_chain", "contractions", "classical", "keigo", "cps", "top"]
+WEIGHTS = np.array([0.8, 1.2, 0.8, 0.6, 0.5, 0.5, 0.3, 0.4, 0.5, 0.3, 0.3, 0.2])
 EPISODE_TAG = re.compile(r"^S\d+E\d+$", re.I)
 
 tagger = fugashi.Tagger()
@@ -74,23 +77,35 @@ def tokenize(text):
 REPEAT_RATE = 0.005            # a word seen at least this often per line of a show is learnable in context
 
 
-def features(text, duration, top, toks, rank, show_counts, show_lines):
+def content_lemmas(toks):
+    """Content words of a line. A lone kana (ん, っ, ー and friends) tagged as a noun is a
+    segmentation slip, not a word, and would otherwise count as an ultra-rare unknown."""
+    return [l for l, p1, p2, _ in toks
+            if p1 in CONTENT_POS and p2 not in SKIP_POS2 and not (len(l) == 1 and not re.search(r"[一-鿿々]", l))]
+
+
+def features(text, duration, top, toks, rank, show_counts, show_lines, known):
+    """known is the learner's vocabulary (a set of lemmas) or None when no cards are available."""
     chars = len(JA.findall(text))
-    content = [t for t in toks if t[1] in CONTENT_POS and t[2] not in SKIP_POS2]
-    ranks = []
-    for lemma, *_ in content:
+    content = content_lemmas(toks)
+    ranks, unknown_ranks = [], []
+    for lemma in content:
         r = rank.get(lemma, len(rank) + 1)
         if show_counts.get(lemma, 0) >= REPEAT_RATE * show_lines:
             r = min(r, 3000)
         ranks.append(r)
+        if known is not None and lemma not in known:
+            unknown_ranks.append(r)
     rarest = max(ranks) if ranks else 1
     n_rare = sum(r > 3000 for r in ranks)
+    n_unknown = len(unknown_ranks)
+    unknown_rarest_log = math.log10(max(unknown_ranks)) if unknown_ranks else 0.0
     n_pred = sum(1 for t in toks if t[1] in ("動詞", "形容詞"))
     chain = best = 0
     for t in toks:
         chain = chain + 1 if t[1] in ("動詞", "形容詞", "助動詞", "接尾辞") else 0
         best = max(best, chain)
-    return [chars, math.log10(rarest), n_rare, n_pred, best,
+    return [chars, n_unknown, unknown_rarest_log, math.log10(rarest), n_rare, n_pred, best,
             len(CONTRACTION.findall(text)), len(CLASSICAL.findall(text)), len(KEIGO.findall(text)),
             chars / duration, int(top)]
 
@@ -148,14 +163,26 @@ def main():
     rank = {lemma: i + 1 for i, (lemma, _) in enumerate(freq.most_common())}
     log(f"{len(corpus)} shows, {sum(len(v[0]) for v in corpus.values())} lines, {len(rank)} distinct words")
 
-    # pass 2: features for every non-trivial line, standardised over the corpus
-    rows, index = [], []
+    # the learner's vocabulary: every content word on any of their cards
+    known, card_toks = None, {}
+    if anki:
+        card_toks = {c["card_id"]: tokenize(clean(c["text"])) for c in anki["cards"]}
+        known = {l for tk in card_toks.values() for l in content_lemmas(tk)}
+        log(f"learner vocabulary: {len(known)} distinct words across {len(card_toks)} cards")
+
+    # pass 2: features for every non-trivial line, standardised over the corpus; per-show vocabulary coverage
+    rows, index, vocab = [], [], {}
     for key, (lines, toks) in corpus.items():
-        show_counts = collections.Counter(l for tk in toks for l, p1, p2, _ in tk if p1 in CONTENT_POS)
+        show_counts = collections.Counter(l for tk in toks for l in content_lemmas(tk))
+        if known is not None:
+            tokens = sum(show_counts.values())
+            covered = sum(n for l, n in show_counts.items() if l in known)
+            new_words = sum(1 for l in show_counts if l not in known)
+            vocab[key] = {"coverage": round(covered / tokens, 3) if tokens else None, "new_words": new_words}
         for (text, dur, top), tk in zip(lines, toks):
             if len(JA.findall(text)) < TRIVIAL_CHARS:
                 index.append((key, True)); rows.append(None); continue
-            index.append((key, False)); rows.append(features(text, dur, top, tk, rank, show_counts, len(lines)))
+            index.append((key, False)); rows.append(features(text, dur, top, tk, rank, show_counts, len(lines), known))
     X_all = np.array([r for r in rows if r], dtype=float)
     mu, sd = X_all.mean(0), X_all.std(0) + 1e-9
     z_all = ((X_all - mu) / sd) @ WEIGHTS
@@ -177,7 +204,6 @@ def main():
             by_episode[(show, ep)].append(c)
         # A deck is a sample of its show, so the in-show repetition discount uses counts over
         # all the user's cards from that show, at the same per-line rate as the corpus.
-        card_toks = {c["card_id"]: tokenize(clean(c["text"])) for c in anki["cards"]}
         show_counts_by_tag, show_lines_by_tag = {}, collections.Counter()
         for (show, ep), cards in by_episode.items():
             counts = show_counts_by_tag.setdefault(show, collections.Counter())
@@ -189,11 +215,15 @@ def main():
             rate = sum(c["suspended"] for c in cards) / len(cards)
             if rate < EVALUATED_MIN_RATE:
                 log(f"  {show} {ep}: {len(cards)} cards, {rate:.0%} suspended, not evaluated yet"); continue
+            # The episode's own words are left out of the vocabulary while its cards are scored:
+            # with them in, every card looks fully known and the floor floats up the scale.
+            known_elsewhere = {l for (s2, e2), cs in by_episode.items() if (s2, e2) != (show, ep)
+                               for c2 in cs for l in content_lemmas(card_toks[c2["card_id"]])}
             for c in cards:
                 text = clean(c["text"])
                 if len(JA.findall(text)) < TRIVIAL_CHARS:
                     continue
-                f = np.array(features(text, 3.0, False, card_toks[c["card_id"]], rank, show_counts_by_tag[show], show_lines_by_tag[show]), dtype=float)
+                f = np.array(features(text, 3.0, False, card_toks[c["card_id"]], rank, show_counts_by_tag[show], show_lines_by_tag[show], known_elsewhere), dtype=float)
                 for name in ("cps", "top"):                      # cards carry no timing or screen position
                     f[FEATURES.index(name)] = mu[FEATURES.index(name)]
                 zs.append(float(((f - mu) / sd) @ WEIGHTS)); ys.append(c["suspended"])
@@ -215,7 +245,7 @@ def main():
         model.update({"provisional": True, "fitted_on": evaluated_cards})
     else:
         model.update({"provisional": False, "fitted_on": evaluated_cards})
-    model.update({"cut_low": cut_low, "cut_high": cut_high})
+    model.update({"cut_low": cut_low, "cut_high": cut_high, "vocabulary": len(known) if known is not None else 0})
 
     # per show summary
     out, i = {}, 0
@@ -233,7 +263,8 @@ def main():
         out[key] = {"lines": n, "trivial_share": round(1 - len(zs) / n, 3),
                     "easy_share": round(easy, 3) if easy is not None else None,
                     "hard_share": round(hard, 3) if hard is not None else None,
-                    "mean_z": round(float(zs.mean()), 3) if len(zs) else None, "hist": hist.tolist()}
+                    "mean_z": round(float(zs.mean()), 3) if len(zs) else None, "hist": hist.tolist(),
+                    **vocab.get(key, {"coverage": None, "new_words": None})}
     save_json(os.path.join(CACHE, "scores.json"), {"model": model, "shows": out})
     print(f"scored {len(out)} shows; window {'fitted on %d evaluated cards' % evaluated_cards if not model['provisional'] else 'PROVISIONAL'}"
           + ("; high cut not found yet" if cut_high is None else ""))

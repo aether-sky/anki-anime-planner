@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
     "ankiconnect_url": "http://127.0.0.1:8765",
     "anki_field": "Expression",
     "ffmpeg": "",                          # path to ffmpeg or its bin folder; empty = PATH
-    "known_max": 0.85,                     # a show with more lines than this below the known cut is too easy
+    "floor_max": 0.85,                     # a show with more lines than this below the floor is not worth mining
     "reference_shows": [],
     "title_overrides": {},
 }
