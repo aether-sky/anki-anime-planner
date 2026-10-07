@@ -8,6 +8,19 @@ flags, no tagging ritual.
 
 ![The plan report: tier 1 shows with their rating, line counts, and a bar of known, in-range and too-hard lines](docs/report.png)
 
+## Notes from a Human
+
+I've gotten back into learning Japanese. I thought it would be nice to be able to do some analysis on the stuff I know already and use it to decide what to learn next. I had a few requirements:
+
+1) Prioritize anime I already have in my library
+2) Sort by my MAL score. It's easier to learn if it's something I like
+3) Show me how much of the vocab I already know
+4) Sentences that are too complex are a slog. Sentences that are too easy are a waste. I wanted a way to automatically find a balance
+
+This tool does all of that automatically, and also transforms the media files into Anki decks. Once you import, look at a few to see if the subs are cut too close or too loosely. Your agent can rebuild the deck as necessary
+
+All sentences are imported, including short ones. Leaving off short cards can make it hard to recover context in cases where it matters. My procedure is to just suspend them immediately once I understand them while studying. This also grows your body of "known" words, since easy suspended cards are treated as known.
+
 ## Install
 
 1. Copy this folder to `~/.claude/skills/anki-anime-planner` (Claude Code picks it up next session).
